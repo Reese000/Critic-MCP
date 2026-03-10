@@ -1,0 +1,8 @@
+[dotenv@17.3.1] injecting env (1) from .env -- tip: ΓÜÖ∩╕Å  override existing env vars with { override: true }
+=== BEGIN ERROR HANDLING & FAIL-SAFE TEST ===
+
+Scenario 1: Invalid Model ID
+[TEST-LOG] Caught expected error for invalid-model-id-12345: HTTP 400: invalid-model-id-12345 is not a valid model ID
+[TEST-LOG] Triggering fail-safe fallback to openai/gpt-4o-mini...
+Result after fallback: Pong! How can I assist you today?...
+Scenario 1: [SUCCESS] - Fallback worked.
