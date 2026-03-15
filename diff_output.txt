@@ -1,0 +1,125 @@
+diff --git a/lessons_learned.md b/lessons_learned.md
+index fa3290c..e931f26 100644
+--- a/lessons_learned.md
++++ b/lessons_learned.md
+@@ -18,3 +18,9 @@
+ ## Production Hardening
+ - **Stdout Purity**: MCP servers communicating over stdio MUST ensure `stdout` only contains valid JSON-RPC. Libraries like `dotenv` that print to `stdout` by default will break the protocol.
+ - **Stream Hijacking**: A robust way to fix stdout pollution without modifying vendor code is to hijack `process.stdout.write` and redirect non-JSON chunks to `stderr`.
++
++### 2026-03-15 13:40:29 - Analyzing Project Documentation
++- The project serves as a strict MCP evaluator enforcing the Actor-Critic protocol. Analyzed README, tasks, and lessons_learned without modifying source code.
++
++### 2026-03-15 13:45:26 - Planning Agent Debate
++- Drafted the implementation plan for the new 'agent_debate' tool. Realized that multi-turn model calls risk exacerbating rate limit errors outlined in previous lessons. The solution must utilize existing exponential backoff and the internal OpenRouter fallback mechanisms.
+diff --git a/src/index.ts b/src/index.ts
+index 63e9536..e1c9012 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -117,6 +117,22 @@ const LIST_MODELS_TOOL: Tool = {
+     },
+ };
+ 
++const AGENT_DEBATE_TOOL: Tool = {
++    name: "agent_debate",
++    description: "Orchestrates a debate between two AI agents on a given topic.",
++    inputSchema: {
++        type: "object",
++        properties: {
++            topic: { type: "string", description: "The main topic to debate." },
++            position_a: { type: "string", description: "The position Agent A will defend." },
++            position_b: { type: "string", description: "The position Agent B will defend." },
++            max_turns: { type: "number", description: "Maximum number of conversational turns. Defaults to 3." },
++            model: { type: "string", description: "Model to use for the debate. Defaults to the fast fallback model." }
++        },
++        required: ["topic", "position_a", "position_b"]
++    }
++};
++
+ const server = new Server(
+     {
+         name: "critic-server",
+@@ -244,7 +260,7 @@ async function getOpenRouterModels() {
+ 
+ 
+ server.setRequestHandler(ListToolsRequestSchema, async () => ({
+-    tools: [CRITIQUE_TOOL, LIST_MODELS_TOOL],
++    tools: [CRITIQUE_TOOL, LIST_MODELS_TOOL, AGENT_DEBATE_TOOL],
+ }));
+ 
+ server.setRequestHandler(CallToolRequestSchema, async (request) => {
+@@ -262,6 +278,56 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
+         }
+     }
+ 
++    if (request.params.name === "agent_debate") {
++        const { topic, position_a, position_b, max_turns = 3, model = CONFIG.FALLBACK_MODEL } = request.params.arguments as any;
++        
++        let transcript = `DEBATE TOPIC: ${topic}\n\n`;
++        let historyA: any[] = [{ role: "system", content: `You are Agent A. Defend this position strictly: ${position_a}. The topic is: ${topic}. Be concise, articulate, and try to dismantle the opponent's argument. If you physically cannot defend it anymore, output <concede>.` }];
++        let historyB: any[] = [{ role: "system", content: `You are Agent B. Defend this position strictly: ${position_b}. The topic is: ${topic}. Be concise, articulate, and try to dismantle the opponent's argument. If you physically cannot defend it anymore, output <concede>.` }];
++        
++        try {
++            let lastMessage = "";
++            for (let i = 0; i < max_turns; i++) {
++                // Agent A Turn
++                historyA.push({ role: "user", content: i === 0 ? "Begin your opening argument." : `Agent B argued: "${lastMessage}". Counter it.` });
++                const replyA = await callOpenRouterApi(historyA, model);
++                transcript += `**Agent A (Turn ${i+1})**:\n${replyA}\n\n`;
++                historyA.push({ role: "assistant", content: replyA });
++                if (replyA.includes("<concede>")) break;
++                lastMessage = replyA;
++
++                // Agent B Turn
++                historyB.push({ role: "user", content: `Agent A argued: "${lastMessage}". Counter it.` });
++                const replyB = await callOpenRouterApi(historyB, model);
++                transcript += `**Agent B (Turn ${i+1})**:\n${replyB}\n\n`;
++                historyB.push({ role: "assistant", content: replyB });
++                if (replyB.includes("<concede>")) break;
++                lastMessage = replyB;
++            }
++
++            // Summarizer
++            const summaryPrompt = [{
++                role: "system",
++                content: "You are a debate summarizer. Review the debate transcript and generate a final conclusion document highlighting the main points touched on in the debate by both sides and any relevant insights. Be balanced and concise."
++            }, {
++                role: "user",
++                content: transcript
++            }];
++            
++            const summary = await callOpenRouterApi(summaryPrompt, CONFIG.DEFAULT_MODEL);
++            const finalDocument = `# Debate Summary: ${topic}\n\n## Transcript\n${transcript}\n## Conclusion\n${summary}`;
++            
++            return {
++                content: [{ type: "text", text: finalDocument }]
++            };
++        } catch (error: any) {
++            return {
++                content: [{ type: "text", text: `Debate execution failed: ${error.message}` }],
++                isError: true
++            };
++        }
++    }
++
+     if (request.params.name !== "get_critique") {
+         throw new Error(`Unknown tool: ${request.params.name}`);
+     }
+diff --git a/tasks.md b/tasks.md
+index 4333be8..e910550 100644
+--- a/tasks.md
++++ b/tasks.md
+@@ -13,3 +13,13 @@
+ - [x] Harden error handling with granular diagnostics
+ - [x] Implement failsafe fallback logic verification
+ - [x] Sync production versions (v1.6.0)
++- [ ] Analyze and read all documentation, write general analysis
++### 2026-03-15 13:40:29 - Analyzing Project Documentation
++- [x] Analyze and read all documentation, write general analysis
++### 2026-03-15 13:44:59 - Planning Agent Debate
++- [ ] Plan Agent Debate Function
++### 2026-03-15 13:45:26 - Planning Agent Debate
++- [x] Plan Agent Debate Function
++### 2026-03-15 13:45:43 - Implementing Agent Debate Tool
++- [ ] Implement agent_debate tool in src/index.ts
++- [ ] Write and run Cold-Start script

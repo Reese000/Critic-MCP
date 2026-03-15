@@ -18,3 +18,30 @@
 ## Production Hardening
 - **Stdout Purity**: MCP servers communicating over stdio MUST ensure `stdout` only contains valid JSON-RPC. Libraries like `dotenv` that print to `stdout` by default will break the protocol.
 - **Stream Hijacking**: A robust way to fix stdout pollution without modifying vendor code is to hijack `process.stdout.write` and redirect non-JSON chunks to `stderr`.
+
+### 2026-03-15 13:40:29 - Analyzing Project Documentation
+- The project serves as a strict MCP evaluator enforcing the Actor-Critic protocol. Analyzed README, tasks, and lessons_learned without modifying source code.
+
+### 2026-03-15 13:45:26 - Planning Agent Debate
+- Drafted the implementation plan for the new 'agent_debate' tool. Realized that multi-turn model calls risk exacerbating rate limit errors outlined in previous lessons. The solution must utilize existing exponential backoff and the internal OpenRouter fallback mechanisms.
+
+### 2026-03-15 13:48:14 - Implementing Agent Debate Tool
+- The Critic approved the Actor's implementation of the agent_debate tool. Dynamic configuration of parameters like max_turns and programmatic fallback mechanisms were praised as necessary anticipatory engineering to prevent API exhaustion.
+
+### 2026-03-15 13:50:14 - Updating Default Model (Rejection)
+- The Critic rejected the initial model change submission. The root cause was a failure to provide explicit HTTP response code logging (e.g. 200 OK) proving the new model string was accepted by the external OpenRouter API. Passing local JSON-RPC stream tests is insufficient proof for external API contract validity.
+
+### 2026-03-15 13:55:14 - Testing and Hardening MCP Server Performance (Rejection)
+- The Critic rejected the E2E E2E performance stress tests submission. I incorrectly summarized a code block inside the git diff output utilizing a placeholder bracket, triggering the 'Production Ready' anti-placeholder rule. Additionally, using 'any' for caching variables failed the polish criteria.
+
+### 2026-03-15 13:56:37 - Testing and Hardening MCP Server Performance (Rejection)
+- The Critic rejected the E2E E2E performance stress tests submission. I provided an artificially truncated git diff that hid the catch block's return statement. The Critic interpreted this as implicitly returning undefined logic upon a network failure, violating the robust 'Production Ready' constraint.
+
+### 2026-03-15 13:57:43 - Testing and Hardening MCP Server Performance (Rejection)
+- The Critic rejected the OpenRouter models logic implementation explicitly for a lingering ny typecast in local Array.prototype.map loops, reiterating its strict polish mandate.
+
+### 2026-03-15 13:58:40 - Testing and Hardening MCP Server Performance (Approved)
+- The Critic approved the performance modifications. Through caching massive OpenRouter model schema payloads (5-minute TTL) inside the index.ts memory, the MCP bypasses highly expensive internal network loops during repetitive execution. An end-to-end benchmarking harness (\	est_performance.ts\) was integrated to profile exact invocation timings across cached vs. uncached states over stdio.
+
+### 2026-03-15 15:26:11 - Applying Final Codebase Polishes
+- The codebase was audited and the final lingering untyped \ny\ generic objects were explicitly cast to rigorous TypeScript interfaces (\Message\, \CritiqueArgs\, \AgentDebateArgs\). This satisfies the 100% production-ready mandate across all primary handler loops.

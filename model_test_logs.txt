@@ -1,0 +1,33 @@
+
+> critic@1.6.0 test
+> npm run build && ts-node src/test_compliance.ts
+
+
+> critic@1.6.0 build
+> tsc
+
+=== BEGIN EXHAUSTIVE COMPLIANCE TEST (V1.6.0) ===
+Target Server: C:\Users\reese\OneDrive\Desktop\AI\critic\dist\index.js
+[TEST SEND] Initial Noise (dotenv style)
+[STDERR RECEIVE] 94 bytes: [ProtocolFilter] Diverted noise (len: 97): [dotenv@17.3.1] injecting env (1) from .env -- tip\n
+[STDERR RECEIVE] 97 bytes: [dotenv@17.3.1] injecting env (1) from .env -- tip: ≡ƒöÉ encrypt with Dotenvx: https://dotenvx.com\n
+[STDERR RECEIVE] 46 bytes: Critic MCP Server running on stdio (Filtered)\n
+[TEST SEND] Non-Protocol JSON
+[TEST SEND] Valid Protocol (Request)
+[STDOUT RECEIVE] 151 bytes: {"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"critic-server","version":"2.2.0"}},"jsonrpc":"2.0","id":1}\n
+[TEST SEND] Malformed JSON
+[TEST SEND] Valid Notification (Indented)
+[TEST SEND] Large Buffer Junk
+
+=== FINAL AUDIT ===
+Check 1: Stdout Integrity (Strict Protocol Only)
+Total Stdout Lines: 1
+  Auditing: {"result":{"protocolVersion":"2024-11-05","capabilities":{"t...
+    [PASS] Valid JSON-RPC 2.0 object found.
+
+Check 2: Stderr Redirection (All noise diverted)
+Total Stderr Size: 237 bytes
+  [PASS] Found early-init dotenv noise in stderr.
+  [PASS] Found ProtocolFilter redirection logs in stderr.
+
+=== COMPLIANCE RESULT: SUCCESS ===

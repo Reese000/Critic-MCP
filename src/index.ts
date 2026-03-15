@@ -30,7 +30,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 const CONFIG = {
-    DEFAULT_MODEL: "google/gemini-2.5-flash-lite-preview-09-2025:nitro",
+    DEFAULT_MODEL: "google/gemini-2.5-flash-lite-preview-09-2025",
     FALLBACK_MODEL: "gemini-flash-latest",
     OPENROUTER_FALLBACK: "google/gemini-2.0-flash-exp:free",
     VERSION: "2.2.0"
@@ -117,6 +117,22 @@ const LIST_MODELS_TOOL: Tool = {
     },
 };
 
+const AGENT_DEBATE_TOOL: Tool = {
+    name: "agent_debate",
+    description: "Orchestrates a debate between two AI agents on a given topic.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            topic: { type: "string", description: "The main topic to debate." },
+            position_a: { type: "string", description: "The position Agent A will defend." },
+            position_b: { type: "string", description: "The position Agent B will defend." },
+            max_turns: { type: "number", description: "Maximum number of conversational turns. Defaults to 3." },
+            model: { type: "string", description: "Model to use for the debate. Defaults to the fast fallback model." }
+        },
+        required: ["topic", "position_a", "position_b"]
+    }
+};
+
 const server = new Server(
     {
         name: "critic-server",
@@ -129,7 +145,12 @@ const server = new Server(
     }
 );
 
-async function callGeminiApi(messages: any[], model: string = CONFIG.FALLBACK_MODEL) {
+export interface Message {
+    role: "user" | "assistant" | "system";
+    content: string;
+}
+
+async function callGeminiApi(messages: Message[], model: string = CONFIG.FALLBACK_MODEL) {
     if (!GEMINI_API_KEY) {
         throw new Error("Missing GEMINI_API_KEY. Please check your .env file.");
     }
@@ -153,7 +174,7 @@ async function callGeminiApi(messages: any[], model: string = CONFIG.FALLBACK_MO
             payload,
             buildRequestConfig({
                 headers: { "Content-Type": "application/json" },
-            validateStatus: (status: number) => status < 500, // Handle 4xx gracefully
+                validateStatus: (status: number) => status < 500, // Handle 4xx gracefully
             })
         );
 
@@ -161,6 +182,8 @@ async function callGeminiApi(messages: any[], model: string = CONFIG.FALLBACK_MO
             const errorMsg = response.data?.error?.message || `HTTP ${response.status}`;
             throw new Error(`Gemini Error (${response.status}): ${errorMsg}`);
         }
+
+        console.error(`[API VERIFICATION] Success: HTTP ${response.status} from Gemini using model ${model}`);
 
         const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!responseText) {
@@ -175,7 +198,7 @@ async function callGeminiApi(messages: any[], model: string = CONFIG.FALLBACK_MO
     }
 }
 
-async function callOpenRouterApi(messages: any[], model: string = CONFIG.DEFAULT_MODEL) {
+async function callOpenRouterApi(messages: Message[], model: string = CONFIG.DEFAULT_MODEL) {
     if (!OPENROUTER_API_KEY) {
         throw new Error("Missing OPENROUTER_API_KEY. Please check your .env file.");
     }
@@ -205,6 +228,8 @@ async function callOpenRouterApi(messages: any[], model: string = CONFIG.DEFAULT
             throw new Error(`OpenRouter Error (${response.status}): ${errorMsg}`);
         }
 
+        console.error(`[API VERIFICATION] Success: HTTP ${response.status} from OpenRouter using model ${model}`);
+        
         const responseText = response.data?.choices?.[0]?.message?.content;
         if (!responseText) {
             throw new Error(`Invalid response format from OpenRouter for model ${model}`);
@@ -229,22 +254,42 @@ async function callOpenRouterApi(messages: any[], model: string = CONFIG.DEFAULT
     }
 }
 
+let modelCache: string[] | null = null;
+let modelCacheTimestamp: number = 0;
+const CACHE_TTL_MS = 300000; // 5 minutes
+
 async function getOpenRouterModels() {
+    if (modelCache && (Date.now() - modelCacheTimestamp) < CACHE_TTL_MS) {
+        console.error("[CACHE HIT] Returning models from memory.");
+        return modelCache;
+    }
+
     try {
+        console.error("[CACHE MISS] Fetching massive OpenRouter models payload from network...");
         const response = await axios.get("https://openrouter.ai/api/v1/models", buildRequestConfig());
+        
+        interface OpenRouterModel {
+            id: string;
+            pricing: { prompt: string | number; [key: string]: any };
+        }
+
         const freeModels = response.data.data
-            .filter((m: any) => m.pricing.prompt === "0" || m.pricing.prompt === 0)
-            .map((m: any) => m.id);
+            .filter((m: OpenRouterModel) => m.pricing.prompt === "0" || m.pricing.prompt === 0)
+            .map((m: OpenRouterModel) => m.id);
+        
+        modelCache = freeModels;
+        modelCacheTimestamp = Date.now();
+        
         return freeModels;
     } catch (error) {
         console.error("Error fetching OpenRouter models:", error);
-        return ["google/gemma-3-27b-it:free", "meta-llama/llama-3.3-70b-instruct:free"];
+        return [];
     }
 }
 
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [CRITIQUE_TOOL, LIST_MODELS_TOOL],
+    tools: [CRITIQUE_TOOL, LIST_MODELS_TOOL, AGENT_DEBATE_TOOL],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -262,8 +307,74 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
     }
 
+    if (request.params.name === "agent_debate") {
+        interface AgentDebateArgs {
+            topic: string;
+            position_a: string;
+            position_b: string;
+            max_turns?: number;
+            model?: string;
+        }
+        const { topic, position_a, position_b, max_turns = 3, model = CONFIG.FALLBACK_MODEL } = request.params.arguments as unknown as AgentDebateArgs;
+        
+        let transcript = `DEBATE TOPIC: ${topic}\n\n`;
+        let historyA: Message[] = [{ role: "system", content: `You are Agent A. Defend this position strictly: ${position_a}. The topic is: ${topic}. Be concise, articulate, and try to dismantle the opponent's argument. If you physically cannot defend it anymore, output <concede>.` }];
+        let historyB: Message[] = [{ role: "system", content: `You are Agent B. Defend this position strictly: ${position_b}. The topic is: ${topic}. Be concise, articulate, and try to dismantle the opponent's argument. If you physically cannot defend it anymore, output <concede>.` }];
+        
+        try {
+            let lastMessage = "";
+            for (let i = 0; i < max_turns; i++) {
+                // Agent A Turn
+                historyA.push({ role: "user", content: i === 0 ? "Begin your opening argument." : `Agent B argued: "${lastMessage}". Counter it.` });
+                const replyA = await callOpenRouterApi(historyA, model);
+                transcript += `**Agent A (Turn ${i+1})**:\n${replyA}\n\n`;
+                historyA.push({ role: "assistant", content: replyA });
+                if (replyA.includes("<concede>")) break;
+                lastMessage = replyA;
+
+                // Agent B Turn
+                historyB.push({ role: "user", content: `Agent A argued: "${lastMessage}". Counter it.` });
+                const replyB = await callOpenRouterApi(historyB, model);
+                transcript += `**Agent B (Turn ${i+1})**:\n${replyB}\n\n`;
+                historyB.push({ role: "assistant", content: replyB });
+                if (replyB.includes("<concede>")) break;
+                lastMessage = replyB;
+            }
+
+            // Summarizer
+            const summaryPrompt: Message[] = [{
+                role: "system",
+                content: "You are a debate summarizer. Review the debate transcript and generate a final conclusion document highlighting the main points touched on in the debate by both sides and any relevant insights. Be balanced and concise."
+            }, {
+                role: "user",
+                content: transcript
+            }];
+            
+            const summary = await callOpenRouterApi(summaryPrompt, CONFIG.DEFAULT_MODEL);
+            const finalDocument = `# Debate Summary: ${topic}\n\n## Transcript\n${transcript}\n## Conclusion\n${summary}`;
+            
+            return {
+                content: [{ type: "text", text: finalDocument }]
+            };
+        } catch (error: any) {
+            return {
+                content: [{ type: "text", text: `Debate execution failed: ${error.message}` }],
+                isError: true
+            };
+        }
+    }
+
     if (request.params.name !== "get_critique") {
         throw new Error(`Unknown tool: ${request.params.name}`);
+    }
+
+    interface CritiqueArgs {
+        user_request: string;
+        work_done: string;
+        git_diff_output: string;
+        raw_test_logs: string;
+        model?: string;
+        conversation_history?: Message[];
     }
 
     const {
@@ -273,7 +384,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         raw_test_logs,
         model = CONFIG.DEFAULT_MODEL,
         conversation_history = [],
-    } = request.params.arguments as any;
+    } = request.params.arguments as unknown as CritiqueArgs;
 
     // Input Validation
     if (!user_request || user_request.trim().length < 10) {
@@ -372,7 +483,7 @@ ${raw_test_logs || "Not provided."}
 Please provide your critique based on the above information.
 `;
 
-    const messages = [
+    const messages: Message[] = [
         { role: "system", content: systemPrompt }
     ];
     for (const msg of conversation_history) {

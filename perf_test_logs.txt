@@ -1,0 +1,23 @@
+(node:28060) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+--import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("ts-node/esm", pathToFileURL("./"));'
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:28060) [DEP0180] DeprecationWarning: fs.Stats constructor is deprecated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+=== BEGIN PERFORMANCE EVALUATION ===
+Target Server: C:\Users\reese\OneDrive\Desktop\AI\critic\dist\index.js
+[ProtocolFilter] Diverted noise (len: 109): [dotenv@17.3.1] injecting env (1) from .env -- tip
+[dotenv@17.3.1] injecting env (1) from .env -- tip: ΓÜÖ∩╕Å  write to custom object with { processEnv: myObject }
+Critic MCP Server running on stdio (Filtered)
+[TEST] Server initialized.
+
+[TEST] Executing Call 1: Uncached (list_available_models)...
+[CACHE MISS] Fetching massive OpenRouter models payload from network...
+[RESULT] Uncached Call Latency: 161ms
+
+[TEST] Executing Call 2: Cached (list_available_models)...
+[CACHE HIT] Returning models from memory.
+[RESULT] Cached Call Latency: 1ms
+
+=== PERFORMANCE AUDIT ===
+Speedup multiplier: 161.00x
+[PASS] Cache evaluation successful. Latency dropped to 1ms.
