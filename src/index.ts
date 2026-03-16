@@ -30,9 +30,9 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 const CONFIG = {
-    DEFAULT_MODEL: "google/gemini-2.5-flash-lite-preview-09-2025",
+    DEFAULT_MODEL: "google/gemini-2.5-flash-lite:nitro",
     FALLBACK_MODEL: "gemini-flash-latest",
-    OPENROUTER_FALLBACK: "google/gemini-2.0-flash-exp:free",
+    OPENROUTER_FALLBACK: "google/gemini-2.5-flash-lite:nitro",
     VERSION: "2.2.0"
 };
 
@@ -145,6 +145,8 @@ const server = new Server(
     }
 );
 
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
 export interface Message {
     role: "user" | "assistant" | "system";
     content: string;
@@ -169,14 +171,28 @@ async function callGeminiApi(messages: Message[], model: string = CONFIG.FALLBAC
             generationConfig: { temperature: 0 }
         };
 
-        const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-            payload,
-            buildRequestConfig({
-                headers: { "Content-Type": "application/json" },
-                validateStatus: (status: number) => status < 500, // Handle 4xx gracefully
-            })
-        );
+        let response;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            response = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+                payload,
+                buildRequestConfig({
+                    headers: { "Content-Type": "application/json" },
+                    validateStatus: (status: number) => status < 500, // Handle 4xx gracefully
+                })
+            );
+
+            if (response.status === 429 && attempt < 2) {
+                console.error(`[RATE LIMIT HIT] Gemini 429. Waiting 15 seconds before retry ${attempt + 1}/3...`);
+                await delay(15000);
+                continue;
+            }
+            break;
+        }
+
+        if (!response) {
+            throw new Error(`Gemini completely failed to return a response after retries.`);
+        }
 
         if (response.status !== 200) {
             const errorMsg = response.data?.error?.message || `HTTP ${response.status}`;
@@ -210,18 +226,33 @@ async function callOpenRouterApi(messages: Message[], model: string = CONFIG.DEF
             temperature: 0,
         };
 
-        const response = await axios.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            payload,
-            buildRequestConfig({
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-                    "HTTP-Referer": "https://github.com/GoogleCloudPlatform/mcp-server-critic",
-                    "X-Title": "MCP Critic Server",
-                },
-            })
-        );
+        let response;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            response = await axios.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                payload,
+                buildRequestConfig({
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                        "HTTP-Referer": "https://github.com/GoogleCloudPlatform/mcp-server-critic",
+                        "X-Title": "MCP Critic Server",
+                    },
+                    validateStatus: (status: number) => status < 500, // Capture 4xx gracefully for retry logic
+                })
+            );
+
+            if (response.status === 429 && attempt < 2) {
+                console.error(`[RATE LIMIT HIT] OpenRouter 429 on ${model}. Waiting 15 seconds before retry ${attempt + 1}/3...`);
+                await delay(15000);
+                continue; // Retry
+            }
+            break;
+        }
+
+        if (!response) {
+            throw new Error(`OpenRouter completely failed to return a response after retries.`);
+        }
 
         if (response.status !== 200) {
             const errorMsg = JSON.stringify(response.data?.error) || `HTTP ${response.status}`;
@@ -350,7 +381,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: transcript
             }];
             
-            const summary = await callOpenRouterApi(summaryPrompt, CONFIG.DEFAULT_MODEL);
+            const summary = await callOpenRouterApi(summaryPrompt, model);
             const finalDocument = `# Debate Summary: ${topic}\n\n## Transcript\n${transcript}\n## Conclusion\n${summary}`;
             
             return {

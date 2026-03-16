@@ -45,3 +45,13 @@
 
 ### 2026-03-15 15:26:11 - Applying Final Codebase Polishes
 - The codebase was audited and the final lingering untyped \ny\ generic objects were explicitly cast to rigorous TypeScript interfaces (\Message\, \CritiqueArgs\, \AgentDebateArgs\). This satisfies the 100% production-ready mandate across all primary handler loops.
+
+### 2026-03-15 19:45:11 - Uncompiled Node Memory Desync
+- Identified a desync error where another connected MCP agent manually edited \src/index.ts\ to bypass a hardcoded \CONFIG.DEFAULT_MODEL\ parameter via text string injection, but lacked the workspace permissions to execute \
+pm run build\. This resulted in the active Node daemon retaining the unpatched, buggy logic in memory, causing continuous 429 Quota rejections on live evaluation until the TypeScript transpilation pipeline was manually re-triggered.
+
+### 2026-03-15 19:50:10 - Implementing Concurrency Rate Limit Evasion
+- Discovered that massive payload requests routed concurrently from external MCP consumers (e.g., 12-document iterative resolution routines) crashed the entire server orchestration due to immediate 429 Quota exhaustion. Integrated an aggressive \withRetry\ loop explicitly intercepting 429 status codes across both OpenRouter and Gemini native fallbacks, waiting 15 seconds per loop for up to 3 intervals before cascading failures. This ensures upstream rate limiting smoothly delays execution instead of destructively terminating the agent's work cycle.
+
+### 2026-03-15 20:05:30 - Upgrading Fallbacks to Paid Nitro Tiers
+- To permanently override Free Tier quota exhaustion thresholds across upstream API providers, the primary configuration references \CONFIG.DEFAULT_MODEL\ and \CONFIG.OPENROUTER_FALLBACK\ have been natively hardcoded to the paid \google/gemini-2.5-flash-lite:nitro\ endpoints. This eliminates 429 timeouts natively by raising request limits to commercial scale.
