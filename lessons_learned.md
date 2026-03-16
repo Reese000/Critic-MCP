@@ -55,3 +55,6 @@ pm run build\. This resulted in the active Node daemon retaining the unpatched, 
 
 ### 2026-03-15 20:05:30 - Upgrading Fallbacks to Paid Nitro Tiers
 - To permanently override Free Tier quota exhaustion thresholds across upstream API providers, the primary configuration references \CONFIG.DEFAULT_MODEL\ and \CONFIG.OPENROUTER_FALLBACK\ have been natively hardcoded to the paid \google/gemini-2.5-flash-lite:nitro\ endpoints. This eliminates 429 timeouts natively by raising request limits to commercial scale.
+
+### 2026-03-15 20:25:53 - Severing Broken Gemini Fallbacks
+- Diagnosed an issue where non-default OpenRouter models (like Llama 3.3) bypassed the internal Nitro fallback completely and plummeted directly into the native Gemini key, causing instant orchestration failure since the Gemini billing quota was globally exhausted. I have modified \src/index.ts\ to entirely detach \callGeminiApi\ from the \OpenRouterApi\ \	ry/catch\ loop, cleanly redirecting all model failures safely into the paid Nitro tier.
