@@ -315,7 +315,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             max_turns?: number;
             model?: string;
         }
-        const { topic, position_a, position_b, max_turns = 3, model = CONFIG.FALLBACK_MODEL } = request.params.arguments as unknown as AgentDebateArgs;
+        const { topic, position_a, position_b, max_turns = 3 } = request.params.arguments as unknown as AgentDebateArgs;
+        
+        // Explicitly enforce Nitro tier, discarding any downstream requested models.
+        const model = CONFIG.DEFAULT_MODEL;
         
         let transcript = `DEBATE TOPIC: ${topic}\n\n`;
         let historyA: Message[] = [{ role: "system", content: `You are Agent A. Defend this position strictly: ${position_a}. The topic is: ${topic}. Be concise, articulate, and try to dismantle the opponent's argument. If you physically cannot defend it anymore, output <concede>.` }];
@@ -382,9 +385,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         work_done,
         git_diff_output,
         raw_test_logs,
-        model = CONFIG.DEFAULT_MODEL,
         conversation_history = [],
     } = request.params.arguments as unknown as CritiqueArgs;
+
+    // Explicitly enforce Nitro tier, discarding any downstream requested models.
+    const model = CONFIG.DEFAULT_MODEL;
 
     // Input Validation
     if (!user_request || user_request.trim().length < 10) {
