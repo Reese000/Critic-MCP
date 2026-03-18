@@ -8,9 +8,8 @@ An MCP server that provides critiques of agent work using OpenRouter.
   - `get_critique`: Provides a strict audit of agent work using the Actor-Critic protocol.
     - `user_request` (required): The original request or goal.
     - `work_done` (required): Comprehensive summary of actions taken.
-    - `model` (optional): The OpenRouter model to use (defaults to `x-ai/grok-4.1-fast`).
     - `conversation_history` (optional): Context for the critique.
-  - `list_available_models`: Lists available free models from OpenRouter.
+  - Model usage is fixed to `google/gemini-2.5-flash-lite-preview-09-2025`.
 - **Strict Evaluator**: Acts as a ruthlessly analytical quality control gate.
 - **Evaluation Criteria**: 
   1. Read Before Write

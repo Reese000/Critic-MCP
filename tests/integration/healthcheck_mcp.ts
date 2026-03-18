@@ -64,24 +64,15 @@ async function checkCriticMcp() {
     await client.connect(transport);
     console.log("[HEALTHCHECK] Critic MCP transport connected.");
 
-    const modelList = await client.callTool({
-      name: "list_available_models",
-      arguments: {},
-    });
-    const modelArray = (modelList.content?.[0] as any)?.text || "";
-    assert(!!modelArray, "list_available_models returned an empty payload.");
-    console.log("[HEALTHCHECK] list_available_models returned a payload.");
-
     const critique = await client.callTool({
       name: "get_critique",
       arguments: {
         user_request: "Health-check run. No production change. Verify MCP end-to-end transport.",
         work_done:
-          "Executed a runtime health-check by calling list_available_models and get_critique with a minimal diff payload.",
+          "Executed a runtime health-check by calling get_critique with a minimal diff payload.",
         git_diff_output:
           "diff --git a/runtime_check.py b/runtime_check.py\nindex 1234567..89abcde 100644\n--- a/runtime_check.py\n+++ b/runtime_check.py\n@@ -1,2 +1,2 @@\n-print('old')\n+print('new')\n",
         raw_test_logs: `Smoke test run at ${new Date().toISOString()}`,
-        model: "google/gemini-2.5-flash-lite-preview-09-2025:nitro",
       },
     });
 

@@ -13,8 +13,6 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import { Writable } from "node:stream";
-
 import { ProtocolFilter } from "./ProtocolFilter.js";
 
 // Absolute priority: Hijack stdout BEFORE any other imports or logic can print noise
@@ -79,10 +77,6 @@ const CRITIQUE_TOOL: Tool = {
                 type: "string",
                 description: "A comprehensive summary of the actions taken and results achieved by the agent.",
             },
-            model: {
-                type: "string",
-                description: `The OpenRouter model to use for the critique (optional, defaults to ${CONFIG.DEFAULT_MODEL}).`,
-            },
             git_diff_output: {
                 type: "string",
                 description: "Required: Raw git diff output of the code changes made.",
@@ -108,15 +102,6 @@ const CRITIQUE_TOOL: Tool = {
     },
 };
 
-const LIST_MODELS_TOOL: Tool = {
-    name: "list_available_models",
-    description: "Lists available models.",
-    inputSchema: {
-        type: "object",
-        properties: {},
-    },
-};
-
 const AGENT_DEBATE_TOOL: Tool = {
     name: "agent_debate",
     description: "Orchestrates a debate between two AI agents on a given topic.",
@@ -126,8 +111,7 @@ const AGENT_DEBATE_TOOL: Tool = {
             topic: { type: "string", description: "The main topic to debate." },
             position_a: { type: "string", description: "The position Agent A will defend." },
             position_b: { type: "string", description: "The position Agent B will defend." },
-            max_turns: { type: "number", description: "Maximum number of conversational turns. Defaults to 3." },
-            model: { type: "string", description: "Model to use for the debate. Defaults to the fast fallback model." }
+            max_turns: { type: "number", description: "Maximum number of conversational turns. Defaults to 3." }
         },
         required: ["topic", "position_a", "position_b"]
     }
@@ -254,66 +238,17 @@ async function callOpenRouterApi(messages: Message[], model: string = CONFIG.DEF
     }
 }
 
-let modelCache: string[] | null = null;
-let modelCacheTimestamp: number = 0;
-const CACHE_TTL_MS = 300000; // 5 minutes
-
-async function getOpenRouterModels() {
-    if (modelCache && (Date.now() - modelCacheTimestamp) < CACHE_TTL_MS) {
-        console.error("[CACHE HIT] Returning models from memory.");
-        return modelCache;
-    }
-
-    try {
-        console.error("[CACHE MISS] Fetching massive OpenRouter models payload from network...");
-        const response = await axios.get("https://openrouter.ai/api/v1/models", buildRequestConfig());
-        
-        interface OpenRouterModel {
-            id: string;
-            pricing: { prompt: string | number; [key: string]: any };
-        }
-
-        const freeModels = response.data.data
-            .filter((m: OpenRouterModel) => m.pricing.prompt === "0" || m.pricing.prompt === 0)
-            .map((m: OpenRouterModel) => m.id);
-        
-        modelCache = freeModels;
-        modelCacheTimestamp = Date.now();
-        
-        return freeModels;
-    } catch (error) {
-        console.error("Error fetching OpenRouter models:", error);
-        return [];
-    }
-}
-
-
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [CRITIQUE_TOOL, LIST_MODELS_TOOL, AGENT_DEBATE_TOOL],
+    tools: [CRITIQUE_TOOL, AGENT_DEBATE_TOOL],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    if (request.params.name === "list_available_models") {
-        try {
-            const models = await getOpenRouterModels();
-            return {
-                content: [{ type: "text", text: JSON.stringify(models, null, 2) }],
-            };
-        } catch (error: any) {
-            return {
-                content: [{ type: "text", text: `Error: ${error.message}` }],
-                isError: true,
-            };
-        }
-    }
-
     if (request.params.name === "agent_debate") {
         interface AgentDebateArgs {
             topic: string;
             position_a: string;
             position_b: string;
             max_turns?: number;
-            model?: string;
         }
         const { topic, position_a, position_b, max_turns = 3 } = request.params.arguments as unknown as AgentDebateArgs;
         
@@ -376,7 +311,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         work_done: string;
         git_diff_output: string;
         raw_test_logs: string;
-        model?: string;
         conversation_history?: Message[];
     }
 
@@ -497,14 +431,7 @@ Please provide your critique based on the above information.
     messages.push({ role: "user", content: prompt });
 
     try {
-        let critique: string;
-        const isOpenRouterModel = model.includes("/") || model === CONFIG.DEFAULT_MODEL;
-
-        if (isOpenRouterModel) {
-            critique = await callOpenRouterApi(messages, model);
-        } else {
-            critique = await callGeminiApi(messages, model);
-        }
+        const critique = await callOpenRouterApi(messages, CONFIG.DEFAULT_MODEL);
         return {
             content: [{ type: "text", text: critique }],
         };
